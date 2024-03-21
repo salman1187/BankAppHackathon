@@ -10,6 +10,7 @@
         public Configuration()
         {
             AutomaticMigrationsEnabled = false;
+            ContextKey = "BankApp.Data.BankAppDbContext";
         }
 
         protected override void Seed(BankApp.Data.BankAppDbContext context)

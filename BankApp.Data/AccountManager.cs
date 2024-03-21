@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BankApp.Data
@@ -71,7 +73,7 @@ namespace BankApp.Data
             AccountDb.UpdateBalance(fromAccount.AccNo, fromAccount.Balance);
             IDGenerator generate = new IDGenerator();
             int transid = generate.GenerateTransId();
-            TransactionDb.LogTransaction(new Transaction { AccNo = fromAccount.AccNo, Amount = amount, TransDate = DateTime.Today, TransType = "Withdraw", TransID = transid });
+            TransactionDb.LogTransaction(new Transaction { AccNo = fromAccount.AccNo, Amount = amount, TransDate = DateTime.Today, TransType = "Withdraw", TransID = transid, Status = TransactionStatus.CLOSED });
 
             StreamWriter writer = new StreamWriter("IdGeneratorFile.txt", false);
             writer.WriteLine(transid);
@@ -90,7 +92,7 @@ namespace BankApp.Data
             AccountDb.UpdateBalance(fromAccount.AccNo, fromAccount.Balance);
             IDGenerator generate = new IDGenerator();
             int transid = generate.GenerateTransId();
-            TransactionDb.LogTransaction(new Transaction { AccNo = fromAccount.AccNo, Amount = amount, TransDate = DateTime.Today, TransType = "Deposit", TransID = transid});
+            TransactionDb.LogTransaction(new Transaction { AccNo = fromAccount.AccNo, Amount = amount, TransDate = DateTime.Today, TransType = "Deposit", TransID = transid, Status = TransactionStatus.CLOSED });
             StreamWriter writer = new StreamWriter("IdGeneratorFile.txt", false);
             writer.WriteLine(transid);
             writer.Close();
@@ -129,13 +131,70 @@ namespace BankApp.Data
                     //update table
                     IDGenerator generate = new IDGenerator();
                     int transid = generate.GenerateTransId();
-                    TransactionDb.LogTransaction(new Transaction { AccNo = fromAcc.AccNo, Amount = amt, TransDate = DateTime.Today, TransType = "Withdraw", TransID = transid });
-                    TransactionDb.LogTransaction(new Transaction { AccNo = toAcc.AccNo, Amount = amt, TransDate = DateTime.Today, TransType = "Deposit" , TransID = transid });
+                    TransactionDb.LogTransaction(new Transaction { AccNo = fromAcc.AccNo, Amount = amt, TransDate = DateTime.Today, TransType = "Withdraw", TransID = transid, Status = TransactionStatus.CLOSED });
+                    TransactionDb.LogTransaction(new Transaction { AccNo = toAcc.AccNo, Amount = amt, TransDate = DateTime.Today, TransType = "Deposit" , TransID = transid, Status = TransactionStatus.CLOSED });
                     StreamWriter writer = new StreamWriter("IdGeneratorFile.txt", false);
                     writer.WriteLine(transid);
                     writer.Close();
                 }
                 catch(Exception ex)
+                {
+                    transaction.Rollback();
+                    throw ex;
+                }
+            }
+            return true;
+        }
+        public bool ExternalTransfer(Account fromAcc, ExternalAccount toAcc, string fromPin, double amt)
+        {
+            if (fromAcc.Active == false)
+                throw new InactiveAccountException("Account is inactive");
+            if (fromAcc.Pin != fromPin)
+                throw new InvalidPinException("Invalid PIN");
+            if (amt > fromAcc.Balance)
+                throw new InsufficientbalanceException("Not enough balance in the account");
+            PolicyFactory factory = new PolicyFactory();
+            Policy p = factory.CreatePolicy(fromAcc.GetAccType(), fromAcc.PrivilegeType.ToString());
+
+            if (fromAcc.Balance - amt < p.MinimumBalance)
+                throw new NoMinimumBalanceException("No minimum balance");
+
+
+            double totalAmountToday = db.Transactions
+                                    .Where(t => t.AccNo == fromAcc.AccNo && t.TransDate == DateTime.Today)
+                                    .Sum(t => (double?)t.Amount) ?? 0.0;
+
+            if (totalAmountToday > privilegeAmounts[fromAcc.PrivilegeType])
+                throw new TransactionAmountExceededException("Amount exceeded");
+
+            using (var transaction = db.Database.BeginTransaction())
+            {
+                try
+                {
+                    fromAcc.Balance = fromAcc.Balance - amt;
+                    AccountDb.UpdateBalance(fromAcc.AccNo, fromAcc.Balance);
+
+                    
+                    //update transaction table
+                    IDGenerator generate = new IDGenerator();
+                    int transid = generate.GenerateTransId();
+                    TransactionDb.LogTransaction(new Transaction { AccNo = fromAcc.AccNo, Amount = amt, TransDate = DateTime.Today, TransType = "External Transfer", TransID = transid, BankCode = toAcc.BankCode, Status = TransactionStatus.OPEN });
+                    //call a externaltransferservice() that uses threading and keeps checking if any account is open
+                    StreamWriter writer = new StreamWriter("IdGeneratorFile.txt", false);
+                    writer.WriteLine(transid);
+                    writer.Close();
+
+                    ExternalTransferService externalTransferService = new ExternalTransferService();
+                    Thread transferThread = new Thread(() =>
+                    {
+                        externalTransferService.Start(toAcc, amt);
+                    });
+                    transferThread.Start();
+                    transferThread.Join();
+
+
+                }
+                catch (Exception ex)
                 {
                     transaction.Rollback();
                     throw ex;
@@ -162,6 +221,66 @@ namespace BankApp.Data
         public int GenerateTransId()
         {
             return ++transid;
+        }
+    }
+    public interface IExternalBankContract
+    {
+        bool DepositMoney(ExternalAccount toAcc, double amt);
+    }
+
+
+    public class HCLBankTransfer : IExternalBankContract
+    {
+        public bool DepositMoney(ExternalAccount toAcc, double amt)
+        {
+            BankAppDbContext db = new BankAppDbContext();
+            var account = db.HCLBanks.Find(toAcc.AccNo);
+            if (account == null)
+                return false;
+            account.Amount = amt;
+            db.SaveChanges();
+            return true;
+        }
+    }
+    public class ICICIBankTransfer : IExternalBankContract
+    {
+        public bool DepositMoney(ExternalAccount toAcc, double amt)
+        {
+            BankAppDbContext db = new BankAppDbContext();
+            var account = db.ICICIBanks.Find(toAcc.AccNo);
+            if (account == null)
+                return false;
+            account.Amount = amt;
+            db.SaveChanges();
+            return true;
+        }
+    }
+    public class CITIBankTransfer : IExternalBankContract
+    {
+        public bool DepositMoney(ExternalAccount toAcc, double amt)
+        {
+            BankAppDbContext db = new BankAppDbContext();
+            var account = db.CITIBanks.Find(toAcc.AccNo);
+            if (account == null)
+                return false;
+            account.Amount = amt;
+            db.SaveChanges();
+            return true;
+        }
+    }
+    public class ExternalTransferFactory
+    {
+        public IExternalBankContract ExternalTransferCreator(string bankCode)
+        {
+            string className = ConfigurationManager.AppSettings[bankCode];
+            if (className == null)
+                throw new Exception($"No implementation found for bank code: {bankCode}");
+
+            Type theType = Type.GetType(className);
+            if (theType == null)
+                throw new Exception($"Type not found for class name: {className}");
+
+            return (IExternalBankContract)Activator.CreateInstance(theType);
         }
     }
 

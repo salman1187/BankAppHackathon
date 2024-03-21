@@ -9,6 +9,11 @@ using System.Threading.Tasks;
 
 namespace BankApp.Entities
 {
+    public enum TransactionStatus
+    {
+        OPEN,
+        CLOSED
+    }
     public enum PrivilegeType
     {
         REGULAR,
@@ -84,7 +89,9 @@ namespace BankApp.Entities
         public int AccNo { get; set; }
         public string TransType { get; set; }
         public DateTime TransDate { get; set; }
-        public double Amount { get; set; }  
+        public double Amount { get; set; }
+        public string BankCode { get; set; }
+        public TransactionStatus Status { get; set; }  
     }
     public class AccountFactory
     {
@@ -95,4 +102,35 @@ namespace BankApp.Entities
             return (Account)Activator.CreateInstance(theType);
         }
     }
+
+    public class ExternalBank
+    {
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int AccNo { get; set; }
+        public double? Amount { get; set; }
+    }
+
+    [Table("HCLBank")]
+    public class HCLBank : ExternalBank
+    { 
+    }
+
+    [Table("ICICIBank")]
+    public class ICICIBank : ExternalBank
+    {
+    }
+
+    [Table("CITIBank")]
+    public class CITIBank : ExternalBank
+    {   
+    }
+    
+    public class ExternalAccount
+    {
+        public int AccNo { get; set; }
+        public string BankCode { get; set; }
+        public string BankName { get; set; }
+    }
+    
 }

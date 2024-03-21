@@ -55,9 +55,14 @@
     <Compile Include="AccountDbRepository.cs" />
     <Compile Include="AccountManager.cs" />
     <Compile Include="BankAppDbContext.cs" />
-    <Compile Include="Migrations\202403201119406_test.cs" />
-    <Compile Include="Migrations\202403201119406_test.Designer.cs">
-      <DependentUpon>202403201119406_test.cs</DependentUpon>
+    <Compile Include="ExternalTransferService.cs" />
+    <Compile Include="Migrations\202403211541369_InitialCreate.cs" />
+    <Compile Include="Migrations\202403211541369_InitialCreate.Designer.cs">
+      <DependentUpon>202403211541369_InitialCreate.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Migrations\202403211600428_test.cs" />
+    <Compile Include="Migrations\202403211600428_test.Designer.cs">
+      <DependentUpon>202403211600428_test.cs</DependentUpon>
     </Compile>
     <Compile Include="Migrations\Configuration.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -76,8 +81,11 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Migrations\202403201119406_test.resx">
-      <DependentUpon>202403201119406_test.cs</DependentUpon>
+    <EmbeddedResource Include="Migrations\202403211541369_InitialCreate.resx">
+      <DependentUpon>202403211541369_InitialCreate.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Migrations\202403211600428_test.resx">
+      <DependentUpon>202403211600428_test.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

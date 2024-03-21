@@ -41,6 +41,7 @@ namespace BankApp.Data
 
             return Transactions;
         }
+        
 
         public void LogTransaction(Transaction t)
         {
